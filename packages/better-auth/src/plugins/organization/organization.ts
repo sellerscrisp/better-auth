@@ -611,6 +611,12 @@ export const organization = <O extends OrganizationOptions>(options?: O) => {
 							},
 							fieldName: options?.schema?.teamMember?.fields?.userId,
 						},
+						role: {
+							type: "string",
+							required: true,
+							defaultValue: "team_member",
+							fieldName: options?.schema?.teamMember?.fields?.role,
+						},
 						createdAt: {
 							type: "date",
 							required: false,

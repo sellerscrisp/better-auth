@@ -240,14 +240,31 @@ export const removeTeam = <O extends OrganizationOptions>(options: O) =>
 					});
 				}
 
-				const canRemove = hasPermission({
+				// TEAM-SCOPED: check if user has a team role that allows deleting the team
+				const teamMember = await adapter.findTeamMember({
+					teamId: ctx.body.teamId,
+					userId: session.user.id,
+				});
+				const canRemoveByTeam = teamMember
+					? hasPermission({
+							role: teamMember.role,
+							options: ctx.context.orgOptions,
+							permissions: {
+								team: ["delete"],
+							},
+					  })
+					: false;
+
+				// ORG-SCOPED fallback
+				const canRemoveByOrg = hasPermission({
 					role: member.role,
 					options: ctx.context.orgOptions,
 					permissions: {
 						team: ["delete"],
 					},
 				});
-				if (!canRemove) {
+
+				if (!canRemoveByTeam && !canRemoveByOrg) {
 					throw new APIError("FORBIDDEN", {
 						message:
 							ORGANIZATION_ERROR_CODES.YOU_ARE_NOT_ALLOWED_TO_DELETE_TEAMS_IN_THIS_ORGANIZATION,
@@ -387,20 +404,7 @@ export const updateTeam = <O extends OrganizationOptions>(options: O) => {
 				});
 			}
 
-			const canUpdate = hasPermission({
-				role: member.role,
-				options: ctx.context.orgOptions,
-				permissions: {
-					team: ["update"],
-				},
-			});
-			if (!canUpdate) {
-				throw new APIError("FORBIDDEN", {
-					message:
-						ORGANIZATION_ERROR_CODES.YOU_ARE_NOT_ALLOWED_TO_UPDATE_THIS_TEAM,
-				});
-			}
-
+			// TEAM-SCOPED: allow update via team role OR fallback via org role
 			const team = await adapter.findTeamById({
 				teamId: ctx.body.teamId,
 				organizationId,
@@ -409,6 +413,36 @@ export const updateTeam = <O extends OrganizationOptions>(options: O) => {
 			if (!team || team.organizationId !== organizationId) {
 				throw new APIError("BAD_REQUEST", {
 					message: ORGANIZATION_ERROR_CODES.TEAM_NOT_FOUND,
+				});
+			}
+
+			const tm = await adapter.findTeamMember({
+				teamId: ctx.body.teamId,
+				userId: session.user.id,
+			});
+
+			const canUpdateByTeam = tm
+				? hasPermission({
+						role: tm.role,
+						options: ctx.context.orgOptions,
+						permissions: {
+							team: ["update"],
+						},
+				  })
+				: false;
+
+			const canUpdateByOrg = hasPermission({
+				role: member.role,
+				options: ctx.context.orgOptions,
+				permissions: {
+					team: ["update"],
+				},
+			});
+
+			if (!canUpdateByTeam && !canUpdateByOrg) {
+				throw new APIError("FORBIDDEN", {
+					message:
+						ORGANIZATION_ERROR_CODES.YOU_ARE_NOT_ALLOWED_TO_UPDATE_THIS_TEAM,
 				});
 			}
 
@@ -765,11 +799,17 @@ export const addTeamMember = <O extends OrganizationOptions>(options: O) =>
 				teamId: z.string().meta({
 					description: "The team the user should be a member of.",
 				}),
-
 				userId: z.coerce.string().meta({
 					description:
 						"The user Id which represents the user to be added as a member.",
 				}),
+				teamRole: z
+					.string()
+					.optional()
+					.meta({
+						description:
+							"Optional team role to assign for this team membership. Eg: 'team_admin'",
+					}),
 			}),
 			metadata: {
 				openapi: {
@@ -835,6 +875,22 @@ export const addTeamMember = <O extends OrganizationOptions>(options: O) =>
 				});
 			}
 
+			// TEAM-SCOPED: allow add via team role OR fallback via org role (member:update)
+			const tm = await adapter.findTeamMember({
+				teamId: ctx.body.teamId,
+				userId: session.user.id,
+			});
+
+			const canAddByTeam = tm
+				? hasPermission({
+						role: tm.role,
+						options: ctx.context.orgOptions,
+						permissions: {
+							teamMember: ["add"],
+						},
+				  })
+				: false;
+
 			const canUpdateMember = hasPermission({
 				role: currentMember.role,
 				options: ctx.context.orgOptions,
@@ -843,7 +899,7 @@ export const addTeamMember = <O extends OrganizationOptions>(options: O) =>
 				},
 			});
 
-			if (!canUpdateMember) {
+			if (!canAddByTeam && !canUpdateMember) {
 				throw new APIError("FORBIDDEN", {
 					message:
 						ORGANIZATION_ERROR_CODES.YOU_ARE_NOT_ALLOWED_TO_CREATE_A_NEW_TEAM_MEMBER,
@@ -865,6 +921,7 @@ export const addTeamMember = <O extends OrganizationOptions>(options: O) =>
 			const teamMember = await adapter.findOrCreateTeamMember({
 				teamId: ctx.body.teamId,
 				userId: ctx.body.userId,
+				role: ctx.body.teamRole,
 			});
 
 			return ctx.json(teamMember);
@@ -880,7 +937,6 @@ export const removeTeamMember = <O extends OrganizationOptions>(options: O) =>
 				teamId: z.string().meta({
 					description: "The team the user should be removed from.",
 				}),
-
 				userId: z.coerce.string().meta({
 					description: "The user which should be removed from the team.",
 				}),
@@ -935,6 +991,22 @@ export const removeTeamMember = <O extends OrganizationOptions>(options: O) =>
 				});
 			}
 
+			// TEAM-SCOPED: allow remove via team role OR fallback via org role (member:delete)
+			const tm = await adapter.findTeamMember({
+				teamId: ctx.body.teamId,
+				userId: session.user.id,
+			});
+
+			const canRemoveByTeam = tm
+				? hasPermission({
+						role: tm.role,
+						options: ctx.context.orgOptions,
+						permissions: {
+							teamMember: ["remove"],
+						},
+				  })
+				: false;
+
 			const canDeleteMember = hasPermission({
 				role: currentMember.role,
 				options: ctx.context.orgOptions,
@@ -943,7 +1015,7 @@ export const removeTeamMember = <O extends OrganizationOptions>(options: O) =>
 				},
 			});
 
-			if (!canDeleteMember) {
+			if (!canRemoveByTeam && !canDeleteMember) {
 				throw new APIError("FORBIDDEN", {
 					message:
 						ORGANIZATION_ERROR_CODES.YOU_ARE_NOT_ALLOWED_TO_REMOVE_A_TEAM_MEMBER,

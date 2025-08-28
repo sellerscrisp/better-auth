@@ -753,6 +753,7 @@ export const getOrgAdapter = <O extends OrganizationOptions>(
 		findOrCreateTeamMember: async (data: {
 			teamId: string;
 			userId: string;
+			role?: string;
 		}) => {
 			const member = await adapter.findOne<TeamMember>({
 				model: "teamMember",
@@ -768,13 +769,31 @@ export const getOrgAdapter = <O extends OrganizationOptions>(
 				],
 			});
 
-			if (member) return member;
+			if (member) {
+				if (data.role && member.role !== data.role) {
+					const updated = await adapter.update<TeamMember>({
+						model: "teamMember",
+						where: [
+							{
+								field: "id",
+								value: member.id,
+							},
+						],
+						update: {
+							role: data.role,
+						},
+					});
+					return updated as TeamMember;
+				}
+				return member;
+			}
 
 			return await adapter.create<Omit<TeamMember, "id">, TeamMember>({
 				model: "teamMember",
 				data: {
 					teamId: data.teamId,
 					userId: data.userId,
+					role: data.role ?? "team_member",
 					createdAt: new Date(),
 				},
 			});
@@ -934,5 +953,6 @@ export const getOrgAdapter = <O extends OrganizationOptions>(
 			});
 			return invitation;
 		},
-	};
+	}; 
 };
+
