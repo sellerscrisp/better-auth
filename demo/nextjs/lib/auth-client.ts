@@ -15,7 +15,11 @@ import { stripeClient } from "@better-auth/stripe/client";
 
 export const client = createAuthClient({
 	plugins: [
-		organizationClient(),
+		organizationClient({
+			teams: {
+				enabled: true,
+			},
+		}),
 		twoFactorClient({
 			onTwoFactorRedirect() {
 				window.location.href = "/two-factor";

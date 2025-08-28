@@ -160,6 +160,12 @@ export const auth = betterAuth({
 					}),
 				});
 			},
+			teams: {
+				enabled: true,
+				defaultTeam: {
+					enabled: true,
+				},
+			},
 		}),
 		twoFactor({
 			otpOptions: {
